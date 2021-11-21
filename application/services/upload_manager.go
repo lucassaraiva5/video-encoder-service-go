@@ -4,7 +4,6 @@ import (
 	"cloud.google.com/go/storage"
 	"context"
 	"io"
-	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -23,12 +22,11 @@ func NewVideoUpload() *VideoUpload {
 	return &VideoUpload{}
 }
 
-func (vu * VideoUpload) UploadObject(objectPath string, client *storage.Client, ctx context.Context) error  {
+func (vu *VideoUpload) UploadObject(objectPath string, client *storage.Client, ctx context.Context) error {
 
 	path := strings.Split(objectPath, os.Getenv("LOCAL_STORAGE_PATH"))
 
 	f, err := os.Open(objectPath)
-
 	if err != nil {
 		return err
 	}
@@ -47,10 +45,13 @@ func (vu * VideoUpload) UploadObject(objectPath string, client *storage.Client, 
 	}
 
 	return nil
+
 }
 
 func (vu *VideoUpload) loadPaths() error {
-	err := filepath.Walk(vu.VideoPath, func(path string, info fs.FileInfo, err error) error {
+
+	err := filepath.Walk(vu.VideoPath, func(path string, info os.FileInfo, err error) error {
+
 		if !info.IsDir() {
 			vu.Paths = append(vu.Paths, path)
 		}
@@ -60,11 +61,10 @@ func (vu *VideoUpload) loadPaths() error {
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
-func (vu *VideoUpload) ProcessUpload(concurrency int, doneUpload chan string) error  {
+func (vu *VideoUpload) ProcessUpload(concurrency int, doneUpload chan string) error {
 
 	in := make(chan int, runtime.NumCPU())
 	returnChannel := make(chan string)
@@ -79,18 +79,17 @@ func (vu *VideoUpload) ProcessUpload(concurrency int, doneUpload chan string) er
 		return err
 	}
 
-	//multiple process
-	for process := 0; process < concurrency; process ++ {
+	for process := 0; process < concurrency; process++ {
 		go vu.uploadWorker(in, returnChannel, uploadClient, ctx)
 	}
 
 	go func() {
-		for x:=0; x<len(vu.Paths); x++ {
+		for x := 0; x < len(vu.Paths); x++ {
 			in <- x
 		}
+		close(in)
 	}()
 
-	//if one of uploads got error or success message, all the others uploads stop immediatly
 	for r := range returnChannel {
 		if r != "" {
 			doneUpload <- r
@@ -99,9 +98,11 @@ func (vu *VideoUpload) ProcessUpload(concurrency int, doneUpload chan string) er
 	}
 
 	return nil
+
 }
 
-func (vu *VideoUpload) uploadWorker(in chan int, returnChan chan string, uploadClient *storage.Client, ctx context.Context)  {
+func (vu *VideoUpload) uploadWorker(in chan int, returnChan chan string, uploadClient *storage.Client, ctx context.Context) {
+
 	for x := range in {
 		err := vu.UploadObject(vu.Paths[x], uploadClient, ctx)
 
@@ -117,13 +118,12 @@ func (vu *VideoUpload) uploadWorker(in chan int, returnChan chan string, uploadC
 	returnChan <- "upload completed"
 }
 
-func getClientUpload() (*storage.Client, context.Context, error)  {
+func getClientUpload() (*storage.Client, context.Context, error) {
 	ctx := context.Background()
 
 	client, err := storage.NewClient(ctx)
-	if err != nil{
+	if err != nil {
 		return nil, nil, err
 	}
-
 	return client, ctx, nil
 }
